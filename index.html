@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบติดตามโครงการและการใช้จ่ายงบประมาณ (Project & Budget Tracker)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Prompt Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Prompt', sans-serif; background-color: #f8fafc; }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 text-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-blue-600/30 backdrop-blur-md rounded-xl border border-blue-400/30">
+                    <i class="fa-solid fa-chart-pie text-2xl text-blue-300"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight text-white">ระบบติดตามโครงการและการใช้จ่ายงบประมาณ</h1>
+                    <p class="text-xs text-blue-200">Project & Budget Tracker Dashboard (Google Sheets Live Sync)</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <button id="refresh-btn" onclick="fetchDataFromSheet()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition flex items-center gap-2 shadow-md">
+                    <i class="fa-solid fa-arrows-rotate" id="refresh-icon"></i>
+                    <span>รีเฟรชข้อมูล</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        
+        <!-- Loading State -->
+        <div id="loading-spinner" class="flex flex-col items-center justify-center py-16 gap-4">
+            <div class="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+            <p class="text-slate-600 font-medium">กำลังโหลดข้อมูลจาก Google Sheets...</p>
+        </div>
+
+        <!-- Dashboard Content (Hidden until loaded) -->
+        <div id="dashboard-content" class="space-y-8 hidden">
+            
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">งบประมาณรวม</p>
+                        <h3 class="text-2xl font-bold text-slate-900 mt-1" id="kpi-total-budget">฿0</h3>
+                        <p class="text-xs text-slate-500 mt-1">งบตั้งต้นทั้งหมด</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-wallet"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">เบิกจ่ายจริง</p>
+                        <h3 class="text-2xl font-bold text-emerald-600 mt-1" id="kpi-total-spent">฿0</h3>
+                        <p class="text-xs text-emerald-600 font-medium mt-1" id="kpi-spent-pct">0% ของงบรวม</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-money-bill-trend-up"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">งบประมาณคงเหลือ</p>
+                        <h3 class="text-2xl font-bold text-indigo-600 mt-1" id="kpi-total-remaining">฿0</h3>
+                        <p class="text-xs text-indigo-600 font-medium mt-1" id="kpi-remaining-pct">0% คงเหลือ</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-piggy-bank"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">สถานะโครงการ</p>
+                        <h3 class="text-2xl font-bold text-slate-900 mt-1" id="kpi-project-status">0 โครงการ</h3>
+                        <p class="text-xs mt-1" id="kpi-delay-count">ปกติ 0 / ล่าช้า 0</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl font-bold">
+                        <i class="fa-solid fa-list-check"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Bar Chart -->
+                <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-column text-blue-600"></i>
+                        เปรียบเทียบงบประมาณตั้งต้น vs เบิกจ่ายจริง รายโครงการ
+                    </h2>
+                    <div class="h-72">
+                        <canvas id="budgetBarChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Doughnut Chart -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-pie text-indigo-600"></i>
+                        สัดส่วนงบประมาณตามส่วนงาน
+                    </h2>
+                    <div class="h-72 flex items-center justify-center">
+                        <canvas id="deptPieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Projects Table Section -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-table-list text-blue-600"></i>
+                        รายการโครงการและความก้าวหน้า
+                    </h2>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-slate-600">
+                        <thead class="bg-slate-50 text-slate-700 font-semibold uppercase text-xs">
+                            <tr>
+                                <th class="px-4 py-3">รหัส / ชื่อโครงการ</th>
+                                <th class="px-4 py-3">หน่วยงานรับผิดชอบ</th>
+                                <th class="px-4 py-3 text-right">งบตั้งต้น</th>
+                                <th class="px-4 py-3 text-right">เบิกจ่ายแล้ว</th>
+                                <th class="px-4 py-3 text-center">ความก้าวหน้า</th>
+                                <th class="px-4 py-3 text-center">สถานะ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="projects-table-body" class="divide-y divide-slate-100">
+                            <!-- Table rows inserted by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500 mt-auto">
+        ระบบติดตามโครงการและการใช้จ่ายงบประมาณ &copy; Live Sync กับ Google Sheets
+    </footer>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // =========================================================================
+        // ⚠️ วาง WEB APP URL ของคุณในช่องด้านล่างนี้ (ระหว่างเครื่องหมายคำพูด "")
+        // =========================================================================
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxl8Le3GnXtRJ32aPMDnEz6FlysO6h40WbCN4v90CdRvclZ_b6Ty2eIqEmtZZA0rVH6sw/exec"; 
+
+        let barChart = null;
+        let pieChart = null;
+
+        async function fetchDataFromSheet() {
+            const refreshIcon = document.getElementById('refresh-icon');
+            refreshIcon.classList.add('fa-spin');
+            
+            if (GOOGLE_SCRIPT_URL === "วาง_WEB_APP_URL_ของคุณที่นี่" || !GOOGLE_SCRIPT_URL) {
+                alert("กรุณาใส่ Web App URL ของคุณในไฟล์ index.html ก่อนนะครับ!");
+                refreshIcon.classList.remove('fa-spin');
+                return;
+            }
+
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_URL);
+                const data = await response.json();
+
+                if (data.status === "success") {
+                    renderDashboard(data);
+                    document.getElementById('loading-spinner').classList.add('hidden');
+                    document.getElementById('dashboard-content').classList.remove('hidden');
+                } else {
+                    alert("เกิดข้อผิดพลาดในการดึงข้อมูล: " + data.message);
+                }
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                alert("ไม่สามารถเชื่อมต่อกับ Google Sheets ได้ กรุณาตรวจสอบ Web App URL หรือการตั้งค่าสิทธิ์ Access");
+            } finally {
+                refreshIcon.classList.remove('fa-spin');
+            }
+        }
+
+        function renderDashboard(data) {
+            const masterList = data.Project_Master || [];
+            const actualList = data.Actual_Spending || [];
+
+            // คำนวณ KPI
+            let totalBudget = 0;
+            let totalSpent = 0;
+            let delayedCount = 0;
+
+            const projectsMap = [];
+
+            masterList.forEach(m => {
+                const act = actualList.find(a => a.Activity_ID === m.Activity_ID) || {};
+                const budget = Number(m.Budget_Target) || 0;
+                const spent = Number(act.Actual_Disbursed) || 0;
+                const progressPct = act.Actual_Progress_Pct || "0%";
+                const isDelay = act.Issues_Remarks === "ล่าช้า";
+
+                totalBudget += budget;
+                totalSpent += spent;
+                if (isDelay) delayedCount++;
+
+                projectsMap.push({
+                    id: m.Activity_ID,
+                    name: m.Project_Name,
+                    department: m.Department,
+                    budget: budget,
+                    spent: spent,
+                    progress: progressPct,
+                    isDelay: isDelay
+                });
+            });
+
+            const remaining = totalBudget - totalSpent;
+            const spentPct = totalBudget > 0 ? ((totalSpent / totalBudget) * 100).toFixed(1) : 0;
+            const remainingPct = totalBudget > 0 ? ((remaining / totalBudget) * 100).toFixed(1) : 0;
+
+            // อัปเดต KPI Cards
+            document.getElementById('kpi-total-budget').innerText = '฿' + totalBudget.toLocaleString();
+            document.getElementById('kpi-total-spent').innerText = '฿' + totalSpent.toLocaleString();
+            document.getElementById('kpi-spent-pct').innerText = `${spentPct}% ของงบรวม`;
+            document.getElementById('kpi-total-remaining').innerText = '฿' + remaining.toLocaleString();
+            document.getElementById('kpi-remaining-pct').innerText = `${remainingPct}% คงเหลือ`;
+            document.getElementById('kpi-project-status').innerText = `${projectsMap.length} โครงการ`;
+            document.getElementById('kpi-delay-count').innerHTML = `<span class="text-emerald-600 font-medium">ปกติ ${projectsMap.length - delayedCount}</span> / <span class="text-amber-600 font-medium">ล่าช้า ${delayedCount}</span>`;
+
+            // สร้างตาราง
+            const tbody = document.getElementById('projects-table-body');
+            tbody.innerHTML = '';
+            projectsMap.forEach(p => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/80 transition";
+                tr.innerHTML = `
+                    <td class="px-4 py-3">
+                        <span class="text-xs font-mono font-bold text-slate-400 block">${p.id}</span>
+                        <span class="font-medium text-slate-800">${p.name}</span>
+                    </td>
+                    <td class="px-4 py-3 text-slate-600">${p.department}</td>
+                    <td class="px-4 py-3 text-right font-semibold text-slate-800">฿${p.budget.toLocaleString()}</td>
+                    <td class="px-4 py-3 text-right font-semibold text-emerald-600">฿${p.spent.toLocaleString()}</td>
+                    <td class="px-4 py-3 text-center">
+                        <span class="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                            ${p.progress}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                        ${p.isDelay 
+                            ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200"><i class="fa-solid fa-clock"></i> ล่าช้า</span>` 
+                            : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fa-solid fa-check"></i> ปกติ</span>`}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // อัปเดตกราฟ Bar Chart
+            renderBarChart(projectsMap);
+            // อัปเดตกราฟ Pie Chart
+            renderPieChart(projectsMap);
+        }
+
+        function renderBarChart(projects) {
+            const ctx = document.getElementById('budgetBarChart').getContext('2d');
+            if (barChart) barChart.destroy();
+
+            barChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: projects.map(p => p.id),
+                    datasets: [
+                        {
+                            label: 'งบตั้งต้น',
+                            data: projects.map(p => p.budget),
+                            backgroundColor: '#93c5fd',
+                            borderRadius: 6
+                        },
+                        {
+                            label: 'เบิกจ่ายจริง',
+                            data: projects.map(p => p.spent),
+                            backgroundColor: '#10b981',
+                            borderRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } }
+                }
+            });
+        }
+
+        function renderPieChart(projects) {
+            const ctx = document.getElementById('deptPieChart').getContext('2d');
+            if (pieChart) pieChart.destroy();
+
+            const deptMap = {};
+            projects.forEach(p => {
+                deptMap[p.department] = (deptMap[p.department] || 0) + p.budget;
+            });
+
+            pieChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(deptMap),
+                    datasets: [{
+                        data: Object.values(deptMap),
+                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        // โหลดข้อมูลอัตโนมัติเมื่อเปิดหน้า
+        window.onload = fetchDataFromSheet;
+    </script>
+</body>
+</html>
